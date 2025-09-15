@@ -1,2 +1,0 @@
-# ApniDuniya
-Only personal
