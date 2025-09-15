@@ -1,25 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Apni Duniya Chat</title>
-  <link rel="stylesheet" href="style.css"/>
-  <!-- Firebase SDKs -->
-  <script type="module" src="script.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apni Duniya Chat</title>
+
+<!-- Dark theme CSS -->
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #111;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+}
+.chat-container {
+  width: 95%;
+  max-width: 450px;
+  background: #222;
+  padding: 15px;
+  border-radius: 10px;
+}
+#messages {
+  height: 400px;
+  overflow-y: auto;
+  background: #333;
+  padding: 10px;
+  border-radius: 5px;
+}
+.message {
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 5px;
+  background: #444;
+}
+.input-area {
+  display: flex;
+  margin-top: 10px;
+}
+.input-area input[type="text"] {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 5px;
+}
+.input-area button {
+  margin-left: 5px;
+  padding: 10px;
+  border: none;
+  border-radius: 5px;
+  background: #ff9800;
+  color: #000;
+  cursor: pointer;
+}
+</style>
+
 </head>
 <body>
-  <div class="chat-container">
-    <h2>🔥 Apni Duniya Chat 🔥</h2>
-    <div id="messages"></div>
 
-    <div class="input-area">
-      <input type="text" id="messageInput" placeholder="Type a message..."/>
-      <input type="file" id="fileInput" hidden />
-      <button onclick="sendMessage()">Send</button>
-      <button onclick="chooseFile()">📷</button>
-      <button onclick="startRecording()">🎤</button>
-    </div>
+<div class="chat-container">
+  <h2>🔥 Apni Duniya Chat 🔥</h2>
+  <div id="messages"></div>
+
+  <div class="input-area">
+    <input type="text" id="messageInput" placeholder="Type a message..."/>
+    <input type="file" id="fileInput" hidden />
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="chooseFile()">📷</button>
+    <button onclick="startRecording()">🎤</button>
   </div>
+</div>
+
+<!-- Firebase SDKs + Script -->
+<script type="module">
+// Firebase imports
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyCjO4JfvZlPW60vDtqhHLwiqQ4YONsR0Yw",
+  authDomain: "apniduniya-999.firebaseapp.com",
+  projectId: "apniduniya-999",
+  storageBucket: "apniduniya-999.appspot.com",
+  messagingSenderId: "177190344907",
+  appId: "1:177190344907:web:d057ecdc89887322b0634e",
+  measurementId: "G-7H74N57WDJ"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+const messagesDiv = document.getElementById("messages");
+const messageInput = document.getElementById("messageInput");
+const fileInput = document.getElementById("fileInput");
+
+let mediaRecorder;
+let audioChunks = [];
+
+// Get sender name
+let userName = localStorage.getItem("chatName");
+if(!userName) {
+  userName = prompt("Apna naam batao:") || "Guest";
+  localStorage.setItem("chatName", userName);
+}
+
+// Send text message
+async function sendMessage() {
+  const text = messageInput.value.trim();
+  if(!text) return;
+  await addDoc(collection(db,"messages"),{
+    text,
+    sender: userName,
+    timestamp: Date.now()
+  });
+  messageInput.value = "";
+}
+
+// File upload
+function chooseFile() {
+  fileInput.click();
+}
+
+fileInput.addEventListener("change", async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const storageRef = ref(storage, "uploads/" + Date.now() + "_" + file.name);
+  await uploadBytes(storageRef,file);
+  const url = await getDownloadURL(storageRef);
+
+  await addDoc(collection(db,"messages"),{
+    fileUrl: url,
+    fileType: file.type,
+    sender: userName,
+    timestamp: Date.now()
+  });
+});
+
+// Voice recording
+function startRecording() {
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.start();
+    audioChunks = [];
+
+    mediaRecorder.addEventListener("dataavailable", event=>{
+      audioChunks.push(event.data);
+    });
+
+    mediaRecorder.addEventListener("stop", async ()=>{
+      const audioBlob = new Blob(audioChunks,{type:"audio/webm"});
+      const fileName = "voice_" + Date.now() + ".webm";
+      const storageRef = ref(storage,fileName);
+      await uploadBytes(storageRef,audioBlob);
+      const url = await getDownloadURL(storageRef);
+
+      await addDoc(collection(db,"messages"),{
+        fileUrl: url,
+        fileType: "audio/webm",
+        sender: userName,
+        timestamp: Date.now()
+      });
+    });
+
+    setTimeout(()=>{mediaRecorder.stop();},5000); // 5 sec recording
+  });
+}
+
+// Realtime listener
+const q = query(collection(db,"messages"), orderBy("timestamp"));
+onSnapshot(q,(snapshot)=>{
+  messagesDiv.innerHTML="";
+  snapshot.forEach(doc=>{
+    const data = doc.data();
+    const div = document.createElement("div");
+    div.classList.add("message");
+
+    if(data.text){
+      div.innerHTML = `<strong>${data.sender}:</strong> ${data.text}`;
+    } else if(data.fileUrl){
+      if(data.fileType.startsWith("image/")){
+        div.innerHTML = `<strong>${data.sender}:</strong><br><img src="${data.fileUrl}" width="200"/>`;
+      } else if(data.fileType.startsWith("video/")){
+        div.innerHTML = `<strong>${data.sender}:</strong><br><video src="${data.fileUrl}" width="250" controls></video>`;
+      } else if(data.fileType.startsWith("audio/")){
+        div.innerHTML = `<strong>${data.sender}:</strong><br><audio controls src="${data.fileUrl}"></audio>`;
+      }
+    }
+
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
+});
+</script>
+
 </body>
 </html>
