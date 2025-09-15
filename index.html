@@ -58,6 +58,11 @@ body {
 }
 </style>
 
+<!-- Firebase 9 compat SDKs (non-module) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
 </head>
 <body>
 
@@ -74,13 +79,7 @@ body {
   </div>
 </div>
 
-<!-- Firebase SDKs + Script -->
-<script type="module">
-// Firebase imports
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
-
+<script>
 // Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyCjO4JfvZlPW60vDtqhHLwiqQ4YONsR0Yw",
@@ -93,9 +92,9 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
 
 const messagesDiv = document.getElementById("messages");
 const messageInput = document.getElementById("messageInput");
@@ -106,17 +105,17 @@ let audioChunks = [];
 
 // Get sender name
 let userName = localStorage.getItem("chatName");
-if(!userName) {
+if(!userName){
   userName = prompt("Apna naam batao:") || "Guest";
   localStorage.setItem("chatName", userName);
 }
 
 // Send text message
-async function sendMessage() {
+function sendMessage(){
   const text = messageInput.value.trim();
   if(!text) return;
-  await addDoc(collection(db,"messages"),{
-    text,
+  db.collection("messages").add({
+    text: text,
     sender: userName,
     timestamp: Date.now()
   });
@@ -124,18 +123,17 @@ async function sendMessage() {
 }
 
 // File upload
-function chooseFile() {
+function chooseFile(){
   fileInput.click();
 }
 
 fileInput.addEventListener("change", async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
-  const storageRef = ref(storage, "uploads/" + Date.now() + "_" + file.name);
-  await uploadBytes(storageRef,file);
-  const url = await getDownloadURL(storageRef);
-
-  await addDoc(collection(db,"messages"),{
+  const storageRef = storage.ref().child("uploads/"+Date.now()+"_"+file.name);
+  await storageRef.put(file);
+  const url = await storageRef.getDownloadURL();
+  db.collection("messages").add({
     fileUrl: url,
     fileType: file.type,
     sender: userName,
@@ -144,24 +142,23 @@ fileInput.addEventListener("change", async (e)=>{
 });
 
 // Voice recording
-function startRecording() {
+function startRecording(){
   navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
     mediaRecorder = new MediaRecorder(stream);
     mediaRecorder.start();
     audioChunks = [];
 
-    mediaRecorder.addEventListener("dataavailable", event=>{
-      audioChunks.push(event.data);
+    mediaRecorder.addEventListener("dataavailable", e=>{
+      audioChunks.push(e.data);
     });
 
     mediaRecorder.addEventListener("stop", async ()=>{
       const audioBlob = new Blob(audioChunks,{type:"audio/webm"});
-      const fileName = "voice_" + Date.now() + ".webm";
-      const storageRef = ref(storage,fileName);
-      await uploadBytes(storageRef,audioBlob);
-      const url = await getDownloadURL(storageRef);
-
-      await addDoc(collection(db,"messages"),{
+      const fileName = "voice_"+Date.now()+".webm";
+      const storageRef = storage.ref().child("uploads/"+fileName);
+      await storageRef.put(audioBlob);
+      const url = await storageRef.getDownloadURL();
+      db.collection("messages").add({
         fileUrl: url,
         fileType: "audio/webm",
         sender: userName,
@@ -169,13 +166,12 @@ function startRecording() {
       });
     });
 
-    setTimeout(()=>{mediaRecorder.stop();},5000); // 5 sec recording
+    setTimeout(()=>mediaRecorder.stop(),5000);
   });
 }
 
 // Realtime listener
-const q = query(collection(db,"messages"), orderBy("timestamp"));
-onSnapshot(q,(snapshot)=>{
+db.collection("messages").orderBy("timestamp").onSnapshot(snapshot=>{
   messagesDiv.innerHTML="";
   snapshot.forEach(doc=>{
     const data = doc.data();
