@@ -1,9 +1,9 @@
-// ✅ Firebase Import
+// ✅ Firebase Imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-// ✅ Apna Firebase Config yaha paste karo
+// ✅ Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyCjO4JfvZlPW60vDtqhHLwiqQ4YONsR0Yw",
   authDomain: "apniduniya-999.firebaseapp.com",
@@ -14,7 +14,7 @@ const firebaseConfig = {
   measurementId: "G-7H74N57WDJ"
 };
 
-// ✅ Init Firebase
+// ✅ Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
@@ -26,19 +26,26 @@ const fileInput = document.getElementById("fileInput");
 let mediaRecorder;
 let audioChunks = [];
 
-// 📩 Send Text Message
-async function sendMessage() {
-  const text = messageInput.value;
-  if (!text) return;
+// ✅ Get user name
+let userName = localStorage.getItem("chatName");
+if (!userName) {
+  userName = prompt("Apna naam batao:") || "Guest";
+  localStorage.setItem("chatName", userName);
+}
 
+// 📩 Send text message
+async function sendMessage() {
+  const text = messageInput.value.trim();
+  if (!text) return;
   await addDoc(collection(db, "messages"), {
     text,
+    sender: userName,
     timestamp: Date.now()
   });
   messageInput.value = "";
 }
 
-// 📂 File Upload (Image/Video)
+// 📂 File upload (image/video)
 function chooseFile() {
   fileInput.click();
 }
@@ -47,18 +54,19 @@ fileInput.addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  const storageRef = ref(storage, "uploads/" + file.name);
+  const storageRef = ref(storage, "uploads/" + Date.now() + "_" + file.name);
   await uploadBytes(storageRef, file);
   const url = await getDownloadURL(storageRef);
 
   await addDoc(collection(db, "messages"), {
     fileUrl: url,
     fileType: file.type,
+    sender: userName,
     timestamp: Date.now()
   });
 });
 
-// 🎤 Voice Note Recording
+// 🎤 Voice recording
 function startRecording() {
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
     mediaRecorder = new MediaRecorder(stream);
@@ -79,6 +87,7 @@ function startRecording() {
       await addDoc(collection(db, "messages"), {
         fileUrl: url,
         fileType: "audio/webm",
+        sender: userName,
         timestamp: Date.now()
       });
     });
@@ -89,7 +98,7 @@ function startRecording() {
   });
 }
 
-// 🔄 Realtime Listener
+// 🔄 Realtime listener
 const q = query(collection(db, "messages"), orderBy("timestamp"));
 onSnapshot(q, (snapshot) => {
   messagesDiv.innerHTML = "";
@@ -99,17 +108,18 @@ onSnapshot(q, (snapshot) => {
     div.classList.add("message");
 
     if (data.text) {
-      div.textContent = data.text;
+      div.innerHTML = `<strong>${data.sender}:</strong> ${data.text}`;
     } else if (data.fileUrl) {
       if (data.fileType.startsWith("image/")) {
-        div.innerHTML = `<img src="${data.fileUrl}" width="200"/>`;
+        div.innerHTML = `<strong>${data.sender}:</strong><br><img src="${data.fileUrl}" width="200"/>`;
       } else if (data.fileType.startsWith("video/")) {
-        div.innerHTML = `<video src="${data.fileUrl}" width="250" controls></video>`;
+        div.innerHTML = `<strong>${data.sender}:</strong><br><video src="${data.fileUrl}" width="250" controls></video>`;
       } else if (data.fileType.startsWith("audio/")) {
-        div.innerHTML = `<audio controls src="${data.fileUrl}"></audio>`;
+        div.innerHTML = `<strong>${data.sender}:</strong><br><audio controls src="${data.fileUrl}"></audio>`;
       }
     }
 
     messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
   });
 });
